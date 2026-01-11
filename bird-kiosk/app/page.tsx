@@ -177,7 +177,16 @@ export default function KioskPage() {
 
     // Always rotate after dwell (prevents permanent stuck states).
     const dwellMs = (cam.dwellSec ?? DEFAULT_DWELL_SEC) * 1000;
+    console.log(
+      "Scheduling dwell skip in ms:",
+      dwellMs,
+      "cam:",
+      cam.id,
+      cam.name
+    );
+
     dwellTimerRef.current = window.setTimeout(() => {
+      console.log("DWELL TIMER FIRED for cam:", cam.id);
       skipNext(`Dwell reached (${cam.dwellSec ?? DEFAULT_DWELL_SEC}s)`).catch(
         () => {}
       );
