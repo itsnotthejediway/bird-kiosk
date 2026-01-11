@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "updatedAt": "2026-01-11T00:00:00.000Z",
+  "cams": [
+    {
+      "id": "cornell-feederwatch",
+      "name": "Cornell FeederWatch Cam (Sapsucker Woods) — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/x10vL6_47Dw?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 90,
+      "attribution": "Cornell Lab Bird Cams (YouTube live)"
+    },
+    {
+      "id": "cornell-panama-fruit-feeder",
+      "name": "Panama Fruit Feeder Cam (Canopy Lodge) — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/WtoxxHADnGk?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 90,
+      "attribution": "Cornell Lab Bird Cams (YouTube live)"
+    },
+    {
+      "id": "cornell-royal-albatross",
+      "name": "Royal Albatross Cam (#RoyalCam) — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/Mm_zVDDUeNA?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 120,
+      "attribution": "Cornell Lab Bird Cams (YouTube live)"
+    },
+    {
+      "id": "explore-mississippi-flyway",
+      "name": "Mississippi River Flyway Cam — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/Hkj9L-HKXJU?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 90,
+      "attribution": "EXPLORE.org (YouTube live)"
+    },
+    {
+      "id": "explore-decorah-eagles",
+      "name": "Decorah Eagles — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/IVmL3diwJuw?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 120,
+      "attribution": "EXPLORE.org (YouTube live)"
+    },
+    {
+      "id": "explore-peregrine-falcon",
+      "name": "Chesapeake Conservancy Peregrine Falcon Cam — LIVE",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/pDzgu0ihW8g?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "dwellSec": 120,
+      "attribution": "EXPLORE.org (YouTube live)"
+    }
+  ]
+}

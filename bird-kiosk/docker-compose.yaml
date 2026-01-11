@@ -1,0 +1,16 @@
+services:
+  bird-kiosk:
+    build: .
+    container_name: bird-kiosk
+    image: bird-kiosk
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - ADMIN_TOKEN=change-me
+      - DATA_DIR=/data
+      - NEXT_PUBLIC_DEFAULT_DWELL_SEC=15
+      - NEXT_PUBLIC_READY_TIMEOUT_SEC=15
+    volumes:
+      - ./data:/data
