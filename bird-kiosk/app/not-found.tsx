@@ -1,6 +1,8 @@
+import Link from "next/link";
+import { MapPinOff } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPinOff } from "lucide-react";
 
 export default function NotFoundPage() {
   return (
@@ -17,7 +19,9 @@ export default function NotFoundPage() {
             The address you followed doesn’t exist.
           </div>
 
-          <Button onClick={() => (window.location.href = "/")}>Go home</Button>
+          <Button asChild>
+            <Link href="/">Go home</Link>
+          </Button>
         </CardContent>
       </Card>
     </main>
