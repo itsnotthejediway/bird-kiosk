@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-01-11T00:00:00.000Z",
+  "updatedAt": "2026-01-11T19:04:50.716Z",
   "cams": [
     {
       "id": "cornell-feederwatch",
@@ -49,6 +49,14 @@
       "url": "https://www.youtube.com/embed/pDzgu0ihW8g?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
       "dwellSec": 120,
       "attribution": "EXPLORE.org (YouTube live)"
+    },
+    {
+      "id": "ligma-ballz",
+      "name": "Ligma Ballz",
+      "kind": "youtube",
+      "url": "https://www.youtube.com/embed/IJmIGC0nwK0?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1",
+      "attribution": "lolol",
+      "dwellSec": 15
     }
   ]
 }

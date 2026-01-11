@@ -1,77 +1,62 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Cam, CamFile } from "../../lib/types";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-import type { CamFile } from "../../lib/types";
+type CamKind = "youtube" | "hls" | "web";
 
-function safeJsonParse(
-  raw: string
-): { ok: true; value: any } | { ok: false; error: string } {
-  try {
-    return { ok: true, value: JSON.parse(raw) };
-  } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e) };
-  }
-}
+const DEFAULT_DWELL_SEC = Number(
+  process.env.NEXT_PUBLIC_DEFAULT_DWELL_SEC ?? 90
+);
 
-function validateCamFile(obj: any): string[] {
-  const errors: string[] = [];
-  if (!obj || typeof obj !== "object") return ["Root must be an object"];
-  if (!Array.isArray(obj.cams)) errors.push("Missing or invalid 'cams' array");
-
-  if (Array.isArray(obj.cams)) {
-    obj.cams.forEach((c: any, i: number) => {
-      if (!c || typeof c !== "object") {
-        errors.push(`cams[${i}] must be an object`);
-        return;
-      }
-      if (!c.id || typeof c.id !== "string")
-        errors.push(`cams[${i}].id must be a string`);
-      if (!c.name || typeof c.name !== "string")
-        errors.push(`cams[${i}].name must be a string`);
-      if (!c.kind || typeof c.kind !== "string")
-        errors.push(`cams[${i}].kind must be a string`);
-      if (!c.url || typeof c.url !== "string")
-        errors.push(`cams[${i}].url must be a string`);
-      if (c.dwellSec != null && typeof c.dwellSec !== "number")
-        errors.push(`cams[${i}].dwellSec must be a number`);
-    });
-  }
-
-  return errors;
+function normalizeId(raw: string) {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-_]/g, "");
 }
 
 export default function AdminPage() {
-  const [token, setToken] = useState("");
-  const [raw, setRaw] = useState("");
   const [status, setStatus] = useState<
     "idle" | "loading" | "saving" | "error" | "ok"
   >("idle");
   const [message, setMessage] = useState<string>("");
 
-  useEffect(() => {
-    const saved = localStorage.getItem("admin_token") ?? "";
-    setToken(saved);
-  }, []);
+  const [camFile, setCamFile] = useState<CamFile | null>(null);
 
-  const parseResult = useMemo(() => safeJsonParse(raw), [raw]);
-  const validationErrors = useMemo(() => {
-    if (!raw.trim()) return [];
-    if (!parseResult.ok) return [`Invalid JSON: ${parseResult.error}`];
-    return validateCamFile(parseResult.value);
-  }, [raw, parseResult]);
+  // Modal open state
+  const [open, setOpen] = useState(false);
 
-  const isValid = validationErrors.length === 0 && raw.trim().length > 0;
+  // Form state (one cam per submission)
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<CamKind>("youtube");
+  const [url, setUrl] = useState("");
+  const [dwellSec, setDwellSec] = useState<string>(String(DEFAULT_DWELL_SEC));
+  const [attribution, setAttribution] = useState("");
+
+  const cams = useMemo(() => camFile?.cams ?? [], [camFile]);
 
   async function load() {
     setStatus("loading");
     setMessage("Loading…");
+
     try {
       const res = await fetch("/api/cams", { cache: "no-store" });
       if (!res.ok) {
@@ -82,36 +67,52 @@ export default function AdminPage() {
       }
 
       const data = (await res.json()) as CamFile;
-      setRaw(JSON.stringify(data, null, 2));
+      setCamFile(data);
       setStatus("ok");
-      setMessage("Loaded.");
+      setMessage(`Loaded ${data.cams?.length ?? 0} cam(s).`);
     } catch (e: any) {
       setStatus("error");
       setMessage(`Load error: ${String(e?.message ?? e)}`);
     }
   }
 
-  async function save() {
-    localStorage.setItem("admin_token", token);
+  useEffect(() => {
+    load().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    if (!token.trim()) {
-      setStatus("error");
-      setMessage("Missing admin token.");
-      return;
-    }
+  const canSubmit = useMemo(() => {
+    const idOk = normalizeId(id).length > 0;
+    const nameOk = name.trim().length > 0;
+    const urlOk = url.trim().length > 0;
 
-    if (!parseResult.ok) {
-      setStatus("error");
-      setMessage(`Invalid JSON: ${parseResult.error}`);
-      return;
-    }
+    const dwell = Number(dwellSec);
+    const dwellOk =
+      dwellSec.trim().length === 0 || (!Number.isNaN(dwell) && dwell > 0);
 
-    const errs = validateCamFile(parseResult.value);
-    if (errs.length) {
-      setStatus("error");
-      setMessage("Fix validation errors before saving.");
-      return;
+    return idOk && nameOk && urlOk && dwellOk;
+  }, [id, name, url, dwellSec]);
+
+  function resetForm(keepKindAndDwell = true) {
+    setId("");
+    setName("");
+    setUrl("");
+    setAttribution("");
+    if (!keepKindAndDwell) {
+      setKind("youtube");
+      setDwellSec(String(DEFAULT_DWELL_SEC));
     }
+  }
+
+  async function submitCam() {
+    const cam: Cam = {
+      id: normalizeId(id),
+      name: name.trim(),
+      kind,
+      url: url.trim(),
+      attribution: attribution.trim() || undefined,
+      dwellSec: dwellSec.trim() ? Number(dwellSec) : undefined,
+    };
 
     setStatus("saving");
     setMessage("Saving…");
@@ -119,11 +120,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/cams", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-admin-token": token,
-        },
-        body: JSON.stringify(parseResult.value),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cam }),
       });
 
       if (!res.ok) {
@@ -134,7 +132,11 @@ export default function AdminPage() {
       }
 
       setStatus("ok");
-      setMessage("Saved. Kiosk will pick up changes within ~5 seconds.");
+      setMessage("Saved. Reloading list…");
+      await load();
+
+      resetForm(true);
+      setOpen(false);
     } catch (e: any) {
       setStatus("error");
       setMessage(`Save error: ${String(e?.message ?? e)}`);
@@ -153,93 +155,250 @@ export default function AdminPage() {
       : "Error";
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-4 md:p-8 overflow-auto">
-      <div className="mx-auto max-w-5xl space-y-4">
+    <main className="h-dvh overflow-hidden bg-zinc-950 text-white">
+      {/* Page frame: header + body that fits screen */}
+      <div className="mx-auto flex h-full max-w-5xl flex-col gap-4 p-4 md:p-8">
+        {/* Header */}
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Admin</h1>
-          <Badge variant="secondary" className="bg-white/10 text-white">
-            {badgeText}
-          </Badge>
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight">Admin</h1>
+            {message ? (
+              <div
+                className={
+                  status === "error"
+                    ? "text-sm text-red-300"
+                    : "text-sm text-white/70"
+                }
+              >
+                {message}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-white/10 text-white">
+              {badgeText}
+            </Badge>
+
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => load()}
+              className="bg-white/10 text-white hover:bg-white/15"
+            >
+              Refresh
+            </Button>
+
+            {/* Add cam modal trigger */}
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-white text-black hover:bg-white/90">
+                  Add cam
+                </Button>
+              </DialogTrigger>
+
+              <DialogContent className="border-white/10 bg-zinc-950 text-white">
+                <DialogHeader>
+                  <DialogTitle>Add a cam</DialogTitle>
+                  <DialogDescription className="text-white/60">
+                    Adds (or replaces) one cam by ID.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">ID</div>
+                    <Input
+                      value={id}
+                      onChange={(e) => setId(e.target.value)}
+                      placeholder="e.g. cornell-feederwatch"
+                      className="bg-black/40 border-white/10"
+                    />
+                    <div className="text-xs text-white/50">
+                      Normalized to lowercase/kebab-case on save.
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">Name</div>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Cornell FeederWatch Cam"
+                      className="bg-black/40 border-white/10"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">Kind</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setKind("youtube")}
+                        className={
+                          kind === "youtube"
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "bg-white/10 text-white hover:bg-white/15"
+                        }
+                      >
+                        youtube
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setKind("hls")}
+                        className={
+                          kind === "hls"
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "bg-white/10 text-white hover:bg-white/15"
+                        }
+                      >
+                        hls
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setKind("web")}
+                        className={
+                          kind === "web"
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "bg-white/10 text-white hover:bg-white/15"
+                        }
+                      >
+                        web
+                      </Button>
+                    </div>
+                    <div className="text-xs text-white/50">
+                      youtube = embed URL; hls = .m3u8. (Your kiosk page
+                      currently supports youtube + hls.)
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">Dwell seconds</div>
+                    <Input
+                      value={dwellSec}
+                      onChange={(e) => setDwellSec(e.target.value)}
+                      placeholder={String(DEFAULT_DWELL_SEC)}
+                      inputMode="numeric"
+                      className="bg-black/40 border-white/10"
+                    />
+                    <div className="text-xs text-white/50">
+                      Optional; defaults to {DEFAULT_DWELL_SEC}.
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">URL</div>
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder={
+                        kind === "youtube"
+                          ? "https://www.youtube.com/embed/VIDEO_ID?autoplay=1&mute=1&controls=0&playsinline=1"
+                          : kind === "hls"
+                          ? "https://example.com/stream.m3u8"
+                          : "https://example.com/cam-page"
+                      }
+                      className="bg-black/40 border-white/10"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-sm text-white/70">Attribution</div>
+                    <Input
+                      value={attribution}
+                      onChange={(e) => setAttribution(e.target.value)}
+                      placeholder="e.g. Cornell Lab Bird Cams"
+                      className="bg-black/40 border-white/10"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      resetForm(true);
+                      setOpen(false);
+                    }}
+                    className="bg-white/10 text-white hover:bg-white/15"
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    type="button"
+                    disabled={
+                      !canSubmit || status === "saving" || status === "loading"
+                    }
+                    onClick={() => submitCam()}
+                    className="bg-white text-black hover:bg-white/90 disabled:opacity-50"
+                  >
+                    Add
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
-        <Card className="border-white/10 bg-black/40">
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 items-end">
-              <div className="space-y-1">
-                <div className="text-sm text-white/70">Admin token</div>
-                <Input
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="Enter ADMIN_TOKEN"
-                  className="bg-black/40 border-white/10"
-                />
-                <div className="text-xs text-white/50">
-                  Stored locally in this browser. Required to save.
+        {/* Content: cams list fills remaining space and scrolls internally */}
+        <Card className="flex min-h-0 flex-1 flex-col border-white/10 bg-black/40">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-lg">Current cams</CardTitle>
+              <Badge variant="secondary" className="bg-white/10 text-white">
+                {cams.length} total
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent className="min-h-0 flex-1">
+            <ScrollArea className="h-full pr-2">
+              {cams.length === 0 ? (
+                <div className="text-white/70">
+                  No cams yet. Use “Add cam” to create one.
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  {cams.map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-lg border border-white/10 bg-black/30 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-foreground">
+                            {c.name}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            id: {c.id}
+                          </div>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="bg-white/10 text-white"
+                        >
+                          {c.kind}
+                        </Badge>
+                      </div>
 
-              <Button
-                onClick={load}
-                variant="secondary"
-                className="bg-white/10 text-white hover:bg-white/15"
-              >
-                Load
-              </Button>
+                      <div className="mt-2 break-all text-sm text-white/80">
+                        {c.url}
+                      </div>
 
-              <Button
-                onClick={save}
-                disabled={
-                  !isValid || status === "saving" || status === "loading"
-                }
-                className="bg-white text-black hover:bg-white/90 disabled:opacity-50"
-              >
-                Save
-              </Button>
-            </div>
-
-            {message ? (
-              <div className="text-sm text-white/70">
-                <span
-                  className={
-                    status === "error" ? "text-red-300" : "text-white/70"
-                  }
-                >
-                  {message}
-                </span>
-              </div>
-            ) : null}
-
-            {validationErrors.length ? (
-              <Card className="border-white/10 bg-black/30">
-                <CardContent className="p-3 space-y-2">
-                  <div className="text-sm font-semibold">Validation</div>
-                  <ul className="text-sm text-white/70 list-disc pl-5 space-y-1">
-                    {validationErrors.slice(0, 12).map((e, i) => (
-                      <li key={i}>{e}</li>
-                    ))}
-                  </ul>
-                  {validationErrors.length > 12 ? (
-                    <div className="text-xs text-white/50">
-                      …and {validationErrors.length - 12} more
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/60">
+                        <span>dwell: {c.dwellSec ?? DEFAULT_DWELL_SEC}s</span>
+                        {c.attribution ? <span>• {c.attribution}</span> : null}
+                      </div>
                     </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : null}
-
-            <div className="text-sm text-white/60">
-              Edit <code className="text-white/80">cams.json</code>. The kiosk
-              polls <code className="text-white/80">/api/cams</code> every ~5
-              seconds.
-            </div>
-
-            <Textarea
-              value={raw}
-              onChange={(e) => setRaw(e.target.value)}
-              spellCheck={false}
-              className="min-h-[60vh] bg-black/50 border-white/10 font-mono text-xs text-white/90"
-              placeholder='Click "Load" to fetch current cams.json, then edit and "Save".'
-            />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
