@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 import type { Cam, CamFile, TelemetryEvent } from "../lib/types";
+import { OfflineScreen } from "./components/offline-screen";
 
 const DEFAULT_DWELL_SEC = Number(
   process.env.NEXT_PUBLIC_DEFAULT_DWELL_SEC ?? 90
@@ -95,7 +96,6 @@ export default function KioskPage() {
   const skipNext = useCallback(
     async (detail: string) => {
       if (!cam) return;
-
       setStatus("error");
       setStatusDetail(detail);
 
@@ -107,13 +107,16 @@ export default function KioskPage() {
         event: "skip",
         detail,
       });
-
-      window.setTimeout(() => {
-        setIdx((v) => v + 1);
-      }, SKIP_PAUSE_MS);
     },
     [cam]
   );
+
+  const advance = useCallback(() => {
+    cleanupPlayer();
+    setStatus("loading");
+    setStatusDetail("");
+    setIdx((v) => v + 1);
+  }, [cleanupPlayer]);
 
   // Load cams and hot-reload by polling /api/cams
   useEffect(() => {
@@ -151,6 +154,13 @@ export default function KioskPage() {
 
     setStatus("loading");
     setStatusDetail("");
+
+    // NEW: API-provided health gate
+    const health = (cam as any).health;
+    if (health?.ok === false) {
+      skipNext(health.detail || "Stream is offline").catch(() => {});
+      return;
+    }
 
     postTelemetry({
       ts: new Date().toISOString(),
@@ -282,17 +292,15 @@ export default function KioskPage() {
   );
 
   const fallback = (
-    <div className="fixed inset-0 grid place-items-center bg-black">
-      <Card className="w-[min(720px,calc(100%-2rem))] border-white/10 bg-black/60 text-white backdrop-blur">
-        <CardContent className="p-6 space-y-2 text-center">
-          <div className="text-xl font-semibold">Switching cams…</div>
-          <div className="text-sm text-white/80">
-            {statusDetail || "Trying the next stream."}
-          </div>
-        </CardContent>
-      </Card>
+    <>
+      <OfflineScreen
+        cam={cam}
+        detail={statusDetail || "The stream did not become ready."}
+        autoSkipSec={8}
+        onSkipNow={advance}
+      />
       {overlay}
-    </div>
+    </>
   );
 
   if (!cam) {

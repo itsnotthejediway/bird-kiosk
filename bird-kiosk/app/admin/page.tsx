@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Cam, CamFile } from "../../lib/types";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,14 @@ export default function AdminPage() {
 
   // Modal open state
   const [open, setOpen] = useState(false);
+
+  // Are we editing an existing cam?
+  const [mode, setMode] = useState<"add" | "edit">("add");
+  const [originalId, setOriginalId] = useState<string | null>(null);
+
+  // Delete confirmation state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Cam | null>(null);
 
   // Form state (one cam per submission)
   const [id, setId] = useState("");
@@ -98,15 +107,39 @@ export default function AdminPage() {
     setName("");
     setUrl("");
     setAttribution("");
+    setOriginalId(null);
+    setMode("add");
     if (!keepKindAndDwell) {
       setKind("youtube");
       setDwellSec(String(DEFAULT_DWELL_SEC));
     }
   }
 
+  function openAdd() {
+    resetForm(true);
+    setMode("add");
+    setOpen(true);
+  }
+
+  function openEdit(cam: Cam) {
+    setMode("edit");
+    setOriginalId(cam.id);
+
+    setId(cam.id);
+    setName(cam.name);
+    setKind((cam.kind as CamKind) ?? "youtube");
+    setUrl(cam.url);
+    setDwellSec(String(cam.dwellSec ?? DEFAULT_DWELL_SEC));
+    setAttribution(cam.attribution ?? "");
+
+    setOpen(true);
+  }
+
   async function submitCam() {
+    const normalizedId = normalizeId(id);
+
     const cam: Cam = {
-      id: normalizeId(id),
+      id: normalizedId,
       name: name.trim(),
       kind,
       url: url.trim(),
@@ -115,9 +148,27 @@ export default function AdminPage() {
     };
 
     setStatus("saving");
-    setMessage("Saving…");
+    setMessage(mode === "edit" ? "Saving changes…" : "Saving…");
 
     try {
+      // If editing and the ID changed, remove old ID first to avoid duplicates.
+      if (mode === "edit" && originalId && originalId !== normalizedId) {
+        const delRes = await fetch(
+          `/api/cams?id=${encodeURIComponent(originalId)}`,
+          {
+            method: "DELETE",
+          }
+        );
+        if (!delRes.ok) {
+          const t = await delRes.text();
+          setStatus("error");
+          setMessage(
+            `Could not remove old ID (${originalId}) (${delRes.status}): ${t}`
+          );
+          return;
+        }
+      }
+
       const res = await fetch("/api/cams", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -132,7 +183,9 @@ export default function AdminPage() {
       }
 
       setStatus("ok");
-      setMessage("Saved. Reloading list…");
+      setMessage(
+        mode === "edit" ? "Updated. Reloading list…" : "Saved. Reloading list…"
+      );
       await load();
 
       resetForm(true);
@@ -140,6 +193,43 @@ export default function AdminPage() {
     } catch (e: any) {
       setStatus("error");
       setMessage(`Save error: ${String(e?.message ?? e)}`);
+    }
+  }
+
+  function confirmDelete(cam: Cam) {
+    setDeleteTarget(cam);
+    setDeleteOpen(true);
+  }
+
+  async function deleteCam() {
+    if (!deleteTarget) return;
+
+    setStatus("saving");
+    setMessage(`Deleting "${deleteTarget.name}"…`);
+
+    try {
+      const res = await fetch(
+        `/api/cams?id=${encodeURIComponent(deleteTarget.id)}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!res.ok) {
+        const t = await res.text();
+        setStatus("error");
+        setMessage(`Delete failed (${res.status}): ${t}`);
+        return;
+      }
+
+      setStatus("ok");
+      setMessage("Deleted. Reloading list…");
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      await load();
+    } catch (e: any) {
+      setStatus("error");
+      setMessage(`Delete error: ${String(e?.message ?? e)}`);
     }
   }
 
@@ -156,7 +246,6 @@ export default function AdminPage() {
 
   return (
     <main className="h-dvh overflow-hidden bg-zinc-950 text-white">
-      {/* Page frame: header + body that fits screen */}
       <div className="mx-auto flex h-full max-w-5xl flex-col gap-4 p-4 md:p-8">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
@@ -189,19 +278,35 @@ export default function AdminPage() {
               Refresh
             </Button>
 
-            {/* Add cam modal trigger */}
-            <Dialog open={open} onOpenChange={setOpen}>
+            {/* Add/Edit cam modal */}
+            <Dialog
+              open={open}
+              onOpenChange={(v) => {
+                setOpen(v);
+                if (!v) {
+                  // close -> reset edit state
+                  resetForm(true);
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button className="bg-white text-black hover:bg-white/90">
+                <Button
+                  onClick={openAdd}
+                  className="bg-white text-black hover:bg-white/90"
+                >
                   Add cam
                 </Button>
               </DialogTrigger>
 
               <DialogContent className="border-white/10 bg-zinc-950 text-white">
                 <DialogHeader>
-                  <DialogTitle>Add a cam</DialogTitle>
+                  <DialogTitle>
+                    {mode === "edit" ? "Edit cam" : "Add a cam"}
+                  </DialogTitle>
                   <DialogDescription className="text-white/60">
-                    Adds (or replaces) one cam by ID.
+                    {mode === "edit"
+                      ? "Update this cam’s settings."
+                      : "Adds (or replaces) one cam by ID."}
                   </DialogDescription>
                 </DialogHeader>
 
@@ -337,7 +442,47 @@ export default function AdminPage() {
                     onClick={() => submitCam()}
                     className="bg-white text-black hover:bg-white/90 disabled:opacity-50"
                   >
-                    Add
+                    {mode === "edit" ? "Save" : "Add"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Delete confirmation modal */}
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogContent className="border-white/10 bg-zinc-950 text-white">
+                <DialogHeader>
+                  <DialogTitle>Delete cam?</DialogTitle>
+                  <DialogDescription className="text-white/60">
+                    This will remove{" "}
+                    <span className="text-white">
+                      {deleteTarget?.name ?? "this cam"}
+                    </span>{" "}
+                    permanently from
+                    <span className="text-white"> cams.json</span>.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <DialogFooter className="gap-2 sm:gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setDeleteOpen(false);
+                      setDeleteTarget(null);
+                    }}
+                    className="bg-white/10 text-white hover:bg-white/15"
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={() => deleteCam()}
+                    className="bg-red-500 text-white hover:bg-red-500/90"
+                    disabled={status === "saving" || status === "loading"}
+                  >
+                    Delete
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -345,7 +490,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Content: cams list fills remaining space and scrolls internally */}
+        {/* Cams list */}
         <Card className="flex min-h-0 flex-1 flex-col border-white/10 bg-black/40">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
@@ -378,12 +523,38 @@ export default function AdminPage() {
                             id: {c.id}
                           </div>
                         </div>
-                        <Badge
-                          variant="secondary"
-                          className="bg-white/10 text-white"
-                        >
-                          {c.kind}
-                        </Badge>
+
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="bg-white/10 text-white"
+                          >
+                            {c.kind}
+                          </Badge>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            onClick={() => openEdit(c)}
+                            className="h-8 w-8 bg-white/10 text-white hover:bg-white/15"
+                            aria-label={`Edit ${c.name}`}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            onClick={() => confirmDelete(c)}
+                            className="h-8 w-8 bg-white/10 text-white hover:bg-white/15"
+                            aria-label={`Delete ${c.name}`}
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="mt-2 break-all text-sm text-white/80">

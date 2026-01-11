@@ -23,3 +23,15 @@ export type TelemetryEvent = {
   event: "ready" | "error" | "skip" | "load";
   detail?: string;
 };
+
+export type CamHealth = {
+  ok: boolean;
+  checkedAt: string;
+  detail?: string;
+};
+
+export type CamWithHealth = Cam & { health?: CamHealth };
+
+export type CamFileWithHealth = Omit<CamFile, "cams"> & {
+  cams: CamWithHealth[];
+};
